@@ -1,0 +1,17 @@
+[package]
+name = "go_parser"
+version = "0.0.0"
+authors = ["Charlie Somerville <charlie@charlie.bz>"]
+
+[lib]
+name = "go_parser"
+path = "src/lib.rs"
+
+[[bin]]
+name = "parse-go"
+path = "src/bin/parse_go.rs"
+
+[dependencies]
+unicode_categories = "0.1.1"
+lazy_static = "*"
+regex = "*"
