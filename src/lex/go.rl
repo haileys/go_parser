@@ -224,8 +224,6 @@
 use loc::Loc;
 use super::{Token, TokenInfo, LexError};
 
-use std::collections::VecDeque;
-
 #[derive(Debug)]
 pub enum Lexeme {
     Token(Token),
@@ -241,13 +239,12 @@ fn u32_as_char(codepoint: u32, loc: Loc) -> Result<char, LexError> {
 }
 
 struct Scanner<'a> {
-    lexemes: VecDeque<Lexeme>,
+    lexemes: Vec<Lexeme>,
 
     int_type: &'static Fn(String) -> TokenInfo,
     value: u32,
 
     data: &'a str,
-    p: usize,
     cs: usize,
     ts: usize,
     te: usize,
@@ -255,23 +252,19 @@ struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    fn exec(&mut self) -> Result<Option<Lexeme>, LexError> {
-        if let Some(lexeme) = self.lexemes.pop_front() {
-            return Ok(Some(lexeme));
-        }
-
+    fn exec(mut self) -> Result<Vec<Lexeme>, LexError> {
         %% write init;
 
         let mut tm = ::std::usize::MAX;
-        let mut p = self.p;
+        let mut p = 0;
         let pe = self.data.len();
         let eof = pe;
 
-        %% write exec;
+        while self.cs != go_error && p < pe {
+            %% write exec;
+        }
 
-        self.p = p;
-
-        Ok(self.lexemes.pop_front())
+        Ok(self.lexemes)
     }
 
     fn getkey(&self, idx: usize) -> u32 {
@@ -291,7 +284,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn lexeme(&mut self, lexeme: Lexeme) {
-        self.lexemes.push_back(lexeme)
+        self.lexemes.push(lexeme)
     }
 
     fn token(&mut self, tok: TokenInfo) {
@@ -311,23 +304,14 @@ impl<'a> Scanner<'a> {
 }
 
 pub fn scan(input: &str) -> Result<Vec<Lexeme>, LexError> {
-    let mut scanner = Scanner {
-        lexemes: VecDeque::new(),
+    Scanner {
+        lexemes: Vec::new(),
         int_type: &TokenInfo::DecInt,
         value: 0,
         data: input,
-        p: 0,
         cs: 0,
         ts: 0,
         te: 0,
         act: 0,
-    };
-
-    let mut lexemes = Vec::new();
-
-    while let Some(lexeme) = scanner.exec()? {
-        lexemes.push(lexeme);
-    }
-
-    Ok(lexemes)
+    }.exec()
 }
