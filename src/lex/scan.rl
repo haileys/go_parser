@@ -83,12 +83,14 @@
         escaped_char |
         octal_byte_value |
         hex_byte_value      => { let c = u32_as_char(self.value, self.loc())?; self.token(TokenInfo::RuneContents(c)); fnext rune_end; };
+        zlen                => { return Err(LexError::UnterminatedRune); };
     *|;
 
     rune_end := |*
         "'"                 => { self.token(TokenInfo::RuneEnd); fnext main; };
         newline             => { return Err(LexError::IllegalNewline(self.loc())); };
         any                 => { return Err(LexError::UnexpectedChar(self.loc())); };
+        zlen                => { return Err(LexError::UnterminatedRune); };
     *|;
 
     string_uni_esc      = (escaped_char | big_u_value | little_u_value) - "\'"; # single quote escaped illegal in string lits
@@ -102,17 +104,34 @@
         # escaped bytes are treated as raw bytes in strings, as opposed to code points like in runes:
         string_byte_esc     => { let bytes = vec![self.value as u8]; self.token(TokenInfo::StringContents(bytes)); };
         "\\"                => { return Err(LexError::BadEscape(self.loc())); };
+        zlen                => { return Err(LexError::UnterminatedString); };
     *|;
 
     raw_string := |*
-        (any - "`")*        => { let bytes = self.bytes(); self.token(TokenInfo::StringContents(bytes)); };
-        "`"                 => { self.token(TokenInfo::StringEnd); fnext main; };
+        (any - "`")*    => { let bytes = self.bytes(); self.token(TokenInfo::StringContents(bytes)); };
+        "`"             => { self.token(TokenInfo::StringEnd); fnext main; };
+        zlen            => { return Err(LexError::UnterminatedString); };
+    *|;
+
+    comment_line := |*
+        newline         => { fnext main; };
+        any             => {};
+    *|;
+
+    comment_multiline := |*
+        "*/"            => { fnext main; };
+        any             => {};
+        zlen            => { return Err(LexError::UnterminatedComment); };
     *|;
 
     main := |*
         # whitespace:
         newline         => { let loc = self.loc(); self.lexeme(Lexeme::Newline(loc)) };
         whitespace      => { self.lexeme(Lexeme::Whitespace) };
+
+        # comments:
+        "//"            => { fnext comment_line; };
+        "/*"            => { fnext comment_multiline; };
 
         # identifiers:
         identifier      => { self.token_val(TokenInfo::Identifier) };

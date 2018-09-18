@@ -7,6 +7,9 @@ use self::scan::Lexeme;
 #[derive(Debug)]
 pub enum LexError {
     UnexpectedChar(Loc),
+    UnterminatedComment,
+    UnterminatedString,
+    UnterminatedRune,
     BadEscape(Loc),
     IllegalNewline(Loc),
     IllegalHexDigit(Loc),
