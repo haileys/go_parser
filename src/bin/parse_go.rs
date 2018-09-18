@@ -21,7 +21,7 @@ fn main() -> Result<(), Error> {
 
     let source = fs::read_to_string(&args[1]).map_err(Error::Io)?;
 
-    let tokens = go_parser::scan(&source).map_err(Error::Lex)?;
+    let tokens = go_parser::lex(&source).map_err(Error::Lex)?;
 
     for token in tokens {
         println!("{:?}", token);

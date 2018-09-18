@@ -1,5 +1,5 @@
 /target
-/src/lex/go.rs
+/src/lex/scan.rs
 *.swp
 *.dot
 *.png

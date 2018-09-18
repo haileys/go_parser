@@ -6,4 +6,4 @@ extern crate unicode_categories;
 mod lex;
 mod loc;
 
-pub use lex::{scan, LexError, Token, TokenInfo, Lexeme};
+pub use lex::{lex, LexError, Token, TokenInfo};

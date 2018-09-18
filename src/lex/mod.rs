@@ -1,8 +1,8 @@
 use loc::Loc;
 
-mod go;
+mod scan;
 
-pub use self::go::{scan, Lexeme};
+use self::scan::Lexeme;
 
 #[derive(Debug)]
 pub enum LexError {
@@ -112,4 +112,37 @@ pub enum TokenInfo {
     StringBeg,
     StringContents(Vec<u8>),
     StringEnd,
+}
+
+pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
+    let lexemes = scan::scan(source)?;
+
+    // insert semicolons:
+    let mut tokens = Vec::new();
+
+    for lexeme in lexemes {
+        match lexeme {
+            Lexeme::Token(tok) => { tokens.push(tok); }
+            Lexeme::Whitespace => {}
+            Lexeme::Newline(loc) => {
+                let insert = match tokens.last() {
+                    Some(Token(_, TokenInfo::Identifier(_))) => true,
+                    Some(Token(_, TokenInfo::DecInt(_))) => true,
+                    Some(Token(_, TokenInfo::OctInt(_))) => true,
+                    Some(Token(_, TokenInfo::HexInt(_))) => true,
+                    Some(Token(_, TokenInfo::Float(_))) => true,
+                    Some(Token(_, TokenInfo::Imaginary(_))) => true,
+                    Some(Token(_, TokenInfo::RuneEnd)) => true,
+                    Some(Token(_, TokenInfo::StringEnd)) => true,
+                    _ => false,
+                };
+
+                if insert {
+                    tokens.push(Token(loc, TokenInfo::Semicolon));
+                }
+            }
+        }
+    }
+
+    Ok(tokens)
 }

@@ -4,7 +4,7 @@
 #![allow(unused_parens)]
 
 %%{
-    machine go;
+    machine scan;
 
     newline             = '\n';
     unicode_char        = any - newline;
@@ -115,7 +115,7 @@
 
     main := |*
         # whitespace:
-        newline         => { self.lexeme(Lexeme::Newline) };
+        newline         => { let loc = self.loc(); self.lexeme(Lexeme::Newline(loc)) };
         whitespace      => { self.lexeme(Lexeme::Whitespace) };
 
         # identifiers:
@@ -228,7 +228,7 @@ use super::{Token, TokenInfo, LexError};
 pub enum Lexeme {
     Token(Token),
     Whitespace,
-    Newline,
+    Newline(Loc),
 }
 
 fn u32_as_char(codepoint: u32, loc: Loc) -> Result<char, LexError> {
@@ -260,7 +260,7 @@ impl<'a> Scanner<'a> {
         let pe = self.data.len();
         let eof = pe;
 
-        while self.cs != go_error && p < pe {
+        while self.cs != scan_error && p < pe {
             %% write exec;
         }
 
