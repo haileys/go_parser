@@ -28,10 +28,6 @@
     decimal_lit         = [1-9] decimal_digit*;
     octal_lit           = '0' octal_digit*;
     hex_lit             = '0' [xX] hex_digit+;
-    int_lit             = decimal_lit %{ self.int_type = &TokenInfo::DecInt }
-                        | octal_lit   %{ self.int_type = &TokenInfo::OctInt }
-                        | hex_lit     %{ self.int_type = &TokenInfo::HexInt }
-                        ;
 
     # Floating point literals
     decimals            = decimal_digit+;
@@ -198,7 +194,9 @@
         "&^="           => { self.token(TokenInfo::AmpCaretEq) };
 
         # numeric literals:
-        int_lit         => { self.token_intval() };
+        decimal_lit     => { self.token_val(TokenInfo::DecInt) };
+        octal_lit       => { self.token_val(TokenInfo::OctInt) };
+        hex_lit         => { self.token_val(TokenInfo::HexInt) };
         float_lit       => { self.token_val(TokenInfo::Float) };
         imaginary_lit   => { self.token_val(TokenInfo::Imaginary) };
 
@@ -240,8 +238,6 @@ fn u32_as_char(codepoint: u32, loc: Loc) -> Result<char, LexError> {
 
 struct Scanner<'a> {
     lexemes: Vec<Lexeme>,
-
-    int_type: &'static Fn(String) -> TokenInfo,
     value: u32,
 
     data: &'a str,
@@ -296,17 +292,11 @@ impl<'a> Scanner<'a> {
         let tok = mktok(self.string());
         self.token(tok)
     }
-
-    fn token_intval(&mut self) {
-        let mktok = self.int_type;
-        self.token_val(mktok)
-    }
 }
 
 pub fn scan(input: &str) -> Result<Vec<Lexeme>, LexError> {
     Scanner {
         lexemes: Vec::new(),
-        int_type: &TokenInfo::DecInt,
         value: 0,
         data: input,
         cs: 0,
