@@ -12,6 +12,3 @@ name = "parse-go"
 path = "src/bin/parse_go.rs"
 
 [dependencies]
-unicode_categories = "0.1.1"
-lazy_static = "*"
-regex = "*"

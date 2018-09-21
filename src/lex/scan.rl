@@ -19,7 +19,7 @@
     octal_digit         = [0-7];
     hex_digit           = [0-9A-Fa-f];
     hex_digit_err       = hex_digit
-                        | (any - hex_digit) %{ return Err(LexError::IllegalHexDigit(Loc::new(p - 1 .. p))); };
+                        | (any - hex_digit) %{ return Err(LexError::IllegalHexDigit(self.make_loc(p - 1 .. p))); };
 
     # Identifiers
     identifier          = letter (letter | unicode_digit)*;
@@ -63,7 +63,7 @@
 
     action octal_value {
         self.value = u32::from_str_radix(&self.data[tm..p], 8)
-            .map_err(|_| LexError::IllegalOctalValue(Loc::new(tm..self.te)))?;
+            .map_err(|_| LexError::IllegalOctalValue(self.make_loc(tm..self.te)))?;
     }
 
     rune_uni_char       = unicode_char %{ self.value = self.getkey(self.ts); };
@@ -132,9 +132,6 @@
         # comments:
         "//"            => { fnext comment_line; };
         "/*"            => { fnext comment_multiline; };
-
-        # identifiers:
-        identifier      => { self.token_val(TokenInfo::Identifier) };
 
         # keywords:
         "break"         => { self.token(TokenInfo::Break) };
@@ -212,6 +209,9 @@
         "&^"            => { self.token(TokenInfo::AmpCaret) };
         "&^="           => { self.token(TokenInfo::AmpCaretEq) };
 
+        # identifiers:
+        identifier      => { self.token_val(TokenInfo::Identifier) };
+
         # numeric literals:
         decimal_lit     => { self.token_val(TokenInfo::DecInt) };
         octal_lit       => { self.token_val(TokenInfo::OctInt) };
@@ -238,6 +238,10 @@
 
 %% write data;
 
+use std::ops::Range;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use loc::Loc;
 use super::{Token, TokenInfo, LexError};
 
@@ -258,6 +262,7 @@ fn u32_as_char(codepoint: u32, loc: Loc) -> Result<char, LexError> {
 struct Scanner<'a> {
     lexemes: Vec<Lexeme>,
     value: u32,
+    path: Rc<PathBuf>,
 
     data: &'a str,
     cs: usize,
@@ -286,8 +291,12 @@ impl<'a> Scanner<'a> {
         self.data[idx..].chars().next().unwrap() as u32
     }
 
+    fn make_loc(&self, byte_range: Range<usize>) -> Loc {
+        Loc::new(Rc::clone(&self.path), byte_range)
+    }
+
     fn loc(&self) -> Loc {
-        Loc::new(self.ts..self.te)
+        self.make_loc(self.ts..self.te)
     }
 
     fn bytes(&self) -> Vec<u8> {
@@ -313,10 +322,11 @@ impl<'a> Scanner<'a> {
     }
 }
 
-pub fn scan(input: &str) -> Result<Vec<Lexeme>, LexError> {
+pub fn scan(path: Rc<PathBuf>, input: &str) -> Result<Vec<Lexeme>, LexError> {
     Scanner {
         lexemes: Vec::new(),
         value: 0,
+        path: path,
         data: input,
         cs: 0,
         ts: 0,

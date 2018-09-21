@@ -3,12 +3,15 @@ extern crate go_parser;
 use std::env;
 use std::fs;
 use std::io;
+use std::path::PathBuf;
 use std::process;
+use std::rc::Rc;
 
 #[derive(Debug)]
 enum Error {
     Io(io::Error),
     Lex(go_parser::LexError),
+    Parse(go_parser::ParseError),
 }
 
 fn main() -> Result<(), Error> {
@@ -19,13 +22,15 @@ fn main() -> Result<(), Error> {
         process::exit(1);
     }
 
-    let source = fs::read_to_string(&args[1]).map_err(Error::Io)?;
+    let path = PathBuf::from(&args[1]);
 
-    let tokens = go_parser::lex(&source).map_err(Error::Lex)?;
+    let source = fs::read_to_string(&path).map_err(Error::Io)?;
 
-    for token in tokens {
-        println!("{:?}", token);
-    }
+    let tokens = go_parser::lex(Rc::new(path), &source).map_err(Error::Lex)?;
+
+    let ast = go_parser::parse(tokens).map_err(Error::Parse)?;
+
+    println!("{:#?}", ast);
 
     Ok(())
 }

@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use loc::Loc;
 
 mod scan;
@@ -18,7 +21,7 @@ pub enum LexError {
 }
 
 #[derive(Debug)]
-pub struct Token(Loc, TokenInfo);
+pub struct Token(pub Loc, pub TokenInfo);
 
 #[derive(Debug)]
 pub enum TokenInfo {
@@ -117,8 +120,8 @@ pub enum TokenInfo {
     StringEnd,
 }
 
-pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
-    let lexemes = scan::scan(source)?;
+pub fn lex(path: Rc<PathBuf>, source: &str) -> Result<Vec<Token>, LexError> {
+    let lexemes = scan::scan(path, source)?;
 
     // insert semicolons:
     let mut tokens = Vec::new();
