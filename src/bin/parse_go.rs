@@ -26,7 +26,7 @@ fn main() -> Result<(), Error> {
 
     let source = fs::read_to_string(&path).map_err(Error::Io)?;
 
-    let tokens = go_parser::lex(Rc::new(path), &source).map_err(Error::Lex)?;
+    let tokens = go_parser::lex(&source).map_err(Error::Lex)?;
 
     let ast = go_parser::parse(tokens).map_err(Error::Parse)?;
 

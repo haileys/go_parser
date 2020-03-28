@@ -1,0 +1,405 @@
+use ast;
+use lex::TokenInfo;
+use loc::Loc;
+
+grammar;
+
+List<T>: Vec<T> = {
+    <e:T> <v:("," <T>)*> => {
+        let mut v = v;
+        v.unshift(e);
+        v
+    }
+};
+
+IdentifierList = List<Identifier>;
+ExpressionList = List<Expression>;
+
+pub SourceFile: ast::SourceFile
+    = <l:@L> <package:PackageClause> ";" <imports:(<ImportDecl> ";")*> <decls:(<TopLevelDecl> ";")*> <r:@R> => {
+        let imports = imports.into_iter().flat_map(|xs| xs).collect();
+        ast::SourceFile { loc: l.join(r), package, imports, decls }
+    };
+
+PackageClause: ast::PackageClause
+    = <l:@L> "package" <name:PackageName> <r:@R> => {
+        ast::PackageClause { loc: l.join(r), name }
+    };
+
+Id: ast::Id
+    = <l:@L> <ident:Identifier> <r:@R> => {
+        ast::Id { loc: l.join(r), ident }
+    };
+
+PackageName: ast::Id = Id;
+
+ImportDecl: Vec<ast::ImportSpec> = {
+    "import" <spec:ImportSpec> => { vec![spec] },
+    "import" "(" <specs:(<ImportSpec> ":")*> ")" => { specs }
+};
+
+ImportSpec: ast::ImportSpec
+    = <l:@L> <name:ImportName?> <path:StringLit> <r:@R> => {
+        ast::ImportSpec { loc: l.join(r), name, path }
+    };
+
+ImportName: ast::ImportName = {
+    <l:@L> "." <r:@R> => { ast::ImportName::Dot { loc: l.join(r) } },
+    <l:@L> <name:Identifier> <r:@R> => { ast::ImportName::Name { loc: l.join(r), name } },
+};
+
+StringLit: ast::StringLit
+    = <l:@L> StringBeg <contents:StringContents*> StringEnd <r:@R> => {
+        let bytes = contents.into_iter().fold(Vec::new(), |mut bytes, contents| {
+            bytes.extend(contents);
+            bytes
+        });
+
+        ast::StringLit { loc: l.join(r), value: bytes }
+    };
+
+TopLevelDecl: ast::TopLevelDecl = {
+    <decl:Declaration> => { ast::TopLevelDecl::Decl(decl) },
+    <func:FunctionDecl> => { ast::TopLevelDecl::Func(func) },
+    <method:MethodDecl> => { ast::TopLevelDecl::Method(method) },
+};
+
+Declaration: ast::Declaration = {
+    <const_:ConstDecl> => { ast::Declaration::Const(const_) },
+    <type_:TypeDecl> => { ast::Declaration::Type(type_) },
+    <var:VarDecl> => { ast::Declaration::Var(var) },
+};
+
+ConstDecl: ast::ConstDecl = {
+    <l:@L> "const" <spec:ConstSpec> <r:@R> => {
+        ast::ConstDecl { loc: l.join(r), specs: vec![spec] }
+    },
+    <l:@L> "const" "(" <specs:(<ConstSpec> ";")*> ")" <r:@R> => {
+        ast::ConstDecl { loc: l.join(r), specs }
+    }
+};
+
+ConstSpec: ast::ConstSpec = {
+    <l:@L> <idents:IdentifierList> <type_:Type?> "=" <exprs:ExpressionList> <r:@R> => {
+        ast::ConstSpec { loc: l.join(r), idents, type_, exprs }
+    },
+    <l:@L> <idents:IdentifierList> <r:@R> => {
+        ast::ConstSpec { loc: l.join(r), idents, None, None }
+    }
+}
+
+TypeDecl: ast::TypeDecl = {
+    <l:@L> "type" <spec:TypeSpec> <r:@R> => {
+        ast::TypeDecl { loc: l.join(r), specs: vec![spec] }
+    },
+    <l:@L> "type" "(" <specs:(<TypeSpec> ";")*> ")" <r:@R> => {
+        ast::TypeDecl { loc: l.join(r), specs }
+    }
+};
+
+TypeSpec: ast::TypeSpec = {
+    AliasDecl => { unimplemented!() },
+    TypeDef => { unimplemented!() }
+};
+
+AliasDecl: ast::AliasDecl = {
+    Id "=" Type => { unimplemented!() }
+};
+
+TypeDef: ast::TypeDef = {
+    Id Type => { unimplemented!() }
+}
+
+VarDecl: ast::VarDecl = {
+    <l:@L> "var" <spec:VarSpec> <r:@R> => {
+        ast::VarDecl { loc: l.join(r), specs: vec![spec] }
+    },
+    <l:@L> "var" "(" <specs:(<VarSpec> ";")*> ")" <r:@R> => {
+        ast::VarDecl { loc: l.join(r), specs }
+    }
+};
+
+VarSpec: ast::VarSpec = {
+    IdentifierList (Type ("=" ExpressionList)?) => { unimplemented!() },
+    IdentifierList ("=" ExpressionList) => { unimplemented!() }
+};
+
+FunctionDecl: ast::FunctionDecl = {
+    <l:@L> "func" <name:FunctionName> <signature:Signature> <body:FunctionBody?> <r:@R> => {
+        ast::FunctionDecl { loc: l.join(r), name, signature, body }
+    }
+};
+
+FunctionName: ast::Id = Id;
+
+FunctionBody: ast::Block = Block;
+
+MethodDecl: ast::MethodDecl = {
+    <l:@L> "func" <receiver:Receiver> <name:MethodName> <signature:Signature> <body:FunctionBody?> <r:@R> => {
+        ast::MethodBody { loc: l.join(r), receiver, name, signature, body }
+    }
+};
+
+Receiver: ast::ParameterDecl = {
+    <params:Parameters> => {
+        panic!("TODO - verify that params only contains one parameter");
+    }
+};
+
+MethodName: ast::Id = Id;
+
+Signature: ast::Signature = {
+    <l:@L> <params:Parameters> <result:Result?> <r:@R> => {
+        ast::Signature { loc: l.join(r), params, result }
+    }
+};
+
+Parameters: Vec<ast::ParameterDecl> = {
+    "(" (ParameterList ","?)? ")" => {
+        unimplemented!()
+    }
+};
+
+#[inline]
+ParameterList: Vec<ast::ParameterDecl> = {
+    ParameterDecl ("," ParameterDecl)* => {
+        unimplemented!()
+    }
+};
+
+ParameterDecl: ast::ParameterDecl = {
+    IdentifierList? "..."? Type => {
+        unimplemented!()
+    }
+};
+
+Result: ast::Result = {
+    Parameters => { unimplemented!() },
+    // Type => { unimplemented!() },
+};
+
+Type: ast::Type = {
+    TypeName => { unimplemented!() },
+    TypeLit => { unimplemented!() },
+    "(" Type ")" => { unimplemented!() },
+};
+
+TypeName: ast::TypeName = {
+    // TODO
+};
+
+// <- associates left, but lalrpop has no built in mechanism to declare
+// associativity or precedence of operators, so we work around it with this
+// rule instead
+TypeLit: ast::TypeLit = {
+    "chan" "<-" ChannelType => unimplemented!(),
+    <t:TypeLit0> => t,
+};
+
+TypeLit0: ast::TypeLit = {
+    "<-" "chan" ChannelType => unimplemented!(),
+    "chan" ChannelType => unimplemented!(),
+    <t:TypeLit1> => t,
+};
+
+ChannelType: ast::Type = Type;
+
+TypeLit1: ast::TypeLit = {
+    ArrayType => { unimplemented!() },
+    StructType => { unimplemented!() },
+    PointerType => { unimplemented!() },
+    FunctionType => { unimplemented!() },
+    InterfaceType => { unimplemented!() },
+    SliceType => { unimplemented!() },
+    MapType => { unimplemented!() },
+};
+
+ArrayType: ast::ArrayType = {
+    <l:@L> "[" <length:Expression> "]" <ty:ElementType> <r:@R> => {
+        unimplemented!()
+    }
+};
+
+SliceType: ast::SliceType = {
+    <l:@L> "[" "]" <ty:ElementType> <r:@R> => {
+        unimplemented!()
+    }
+};
+
+ElementType: ast::Type = Type;
+
+StructType: ast::StructType = {
+    <l:@L> "struct" "{" <fields:(<FieldDecl> ";")*> "}" => {
+        unimplemented!()
+    }
+};
+
+FieldDecl: ast::FieldDecl = {
+    <l:@L> IdentifierList Type Tag? <r:@R> => {
+        unimplemented!()
+    },
+    <l:@L> EmbeddedField Tag? <r:@R> => {
+        unimplemented!()
+    }
+};
+
+EmbeddedField: ast::EmbeddedField = {
+    <l:@L> "*"? TypeName <r:@R> => {
+        unimplemented!()
+    }
+};
+
+Tag: ast::StringLit = StringLit;
+
+PointerType: ast::PointerType = {
+    <l:@L> "*" BaseType <r:@R> => {
+        unimplemented!()
+    }
+};
+
+BaseType: ast::Type = Type;
+
+FunctionType: ast::FunctionType = {
+    <l:@L> "func" Signature <r:@R> => {
+        unimplemented!()
+    }
+};
+
+InterfaceType: ast::InterfaceType = {
+    <l:@L> "interface" "{" <methods:(<MethodSpec> ";")*> "}" <r:@R> => {
+        unimplemented!()
+    }
+};
+
+MethodSpec: ast::MethodSpec = {
+    <l:@L> MethodName Signature <r:@R> => unimplemented!(),
+    <l:@L> InterfaceTypeName <r:@R> => unimplemented!(),
+};
+
+InterfaceTypeName: ast::TypeName = TypeName;
+
+MapType: ast::MapType = {
+    <l:@L> "map" "[" KeyType "]" ElementType => {
+        unimplemented!()
+    }
+};
+
+KeyType: ast::Type = Type;
+
+Block: ast::Block = {
+    <l:@L> "{" <statements:StatementList> "}" <r:@R> => {
+        ast::Block { loc: l.join(r), statements }
+    }
+};
+
+StatementList: Vec<ast::Statement> = {
+    <statements:(<Statement> ";")*> => statements
+};
+
+Statement: ast::Statement = {
+    // TODO
+};
+
+Expression: ast::Expression = {
+    // TODO
+};
+
+extern {
+    type Location = Loc;
+
+    enum TokenInfo {
+        Eof => TokenInfo::Eof,
+        // non-keyword barewords:
+        Identifier => TokenInfo::Identifier(<String>),
+        // keywords:
+        "break" => TokenInfo::Break,
+        "default" => TokenInfo::Default,
+        "func" => TokenInfo::Func,
+        "interface" => TokenInfo::Interface,
+        "select" => TokenInfo::Select,
+        "case" => TokenInfo::Case,
+        "defer" => TokenInfo::Defer,
+        "go" => TokenInfo::Go,
+        "map" => TokenInfo::Map,
+        "struct" => TokenInfo::Struct,
+        "chan" => TokenInfo::Chan,
+        "else" => TokenInfo::Else,
+        "goto" => TokenInfo::Goto,
+        "package" => TokenInfo::Package,
+        "switch" => TokenInfo::Switch,
+        "const" => TokenInfo::Const,
+        "fallthrough" => TokenInfo::Fallthrough,
+        "if" => TokenInfo::If,
+        "range" => TokenInfo::Range,
+        "type" => TokenInfo::Type,
+        "continue" => TokenInfo::Continue,
+        "for" => TokenInfo::For,
+        "import" => TokenInfo::Import,
+        "return" => TokenInfo::Return,
+        "var" => TokenInfo::Var,
+        // punctuation:
+        "+" => TokenInfo::Plus,
+        "&" => TokenInfo::Amp,
+        "+=" => TokenInfo::PlusEq,
+        "&=" => TokenInfo::AmpEq,
+        "&&" => TokenInfo::AmpAmp,
+        "==" => TokenInfo::EqEq,
+        "!=" => TokenInfo::NotEq,
+        "(" => TokenInfo::LParen,
+        ")" => TokenInfo::RParen,
+        "-" => TokenInfo::Minus,
+        "|" => TokenInfo::Pipe,
+        "-=" => TokenInfo::MinusEq,
+        "|=" => TokenInfo::PipeEq,
+        "||" => TokenInfo::PipePipe,
+        "<" => TokenInfo::Lt,
+        "<=" => TokenInfo::LtEq,
+        "[" => TokenInfo::LBracket,
+        "]" => TokenInfo::RBracket,
+        "*" => TokenInfo::Star,
+        "^" => TokenInfo::Caret,
+        "*=" => TokenInfo::StarEq,
+        "^=" => TokenInfo::CaretEq,
+        "<-" => TokenInfo::LtMinus,
+        ">" => TokenInfo::Gt,
+        ">=" => TokenInfo::GtEq,
+        "{" => TokenInfo::LBrace,
+        "}" => TokenInfo::RBrace,
+        "/" => TokenInfo::Slash,
+        "<<" => TokenInfo::LtLt,
+        "/=" => TokenInfo::SlashEq,
+        "<<=" => TokenInfo::LtLtEq,
+        "++" => TokenInfo::PlusPlus,
+        "=" => TokenInfo::Eq,
+        ":=" => TokenInfo::ColonEq,
+        "," => TokenInfo::Comma,
+        ";" => TokenInfo::Semicolon,
+        "%" => TokenInfo::Percent,
+        ">>" => TokenInfo::GtGt,
+        "%=" => TokenInfo::PercentEq,
+        ">>=" => TokenInfo::GtGtEq,
+        "--" => TokenInfo::MinusMinus,
+        "!" => TokenInfo::Not,
+        "..." => TokenInfo::Ellipsis,
+        "." => TokenInfo::Dot,
+        ":" => TokenInfo::Colon,
+        "&^" => TokenInfo::AmpCaret,
+        "&^=" => TokenInfo::AmpCaretEq,
+        // integer literals:
+        DecInt => TokenInfo::DecInt(<String>),
+        OctInt => TokenInfo::OctInt(<String>),
+        HexInt => TokenInfo::HexInt(<String>),
+        // float literals:
+        Float => TokenInfo::Float(<String>),
+        // imaginary literals:
+        Imaginary => TokenInfo::Imaginary(<String>),
+        // rune literals:
+        RuneBeg => TokenInfo::RuneBeg,
+        RuneContents => TokenInfo::RuneContents(<char>),
+        RuneEnd => TokenInfo::RuneEnd,
+        // string literals:
+        StringBeg => TokenInfo::StringBeg,
+        StringContents => TokenInfo::StringContents(<Vec<u8>>),
+        StringEnd => TokenInfo::StringEnd,
+    }
+}

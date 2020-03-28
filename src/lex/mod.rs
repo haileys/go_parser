@@ -1,29 +1,24 @@
-use std::path::PathBuf;
-use std::rc::Rc;
-
-use loc::Loc;
-
 mod scan;
 
+use loc::Loc;
 use self::scan::Lexeme;
 
 #[derive(Debug)]
 pub enum LexError {
-    UnexpectedChar(Loc),
+    UnexpectedChar(usize, usize),
     UnterminatedComment,
     UnterminatedString,
     UnterminatedRune,
-    BadEscape(Loc),
-    IllegalNewline(Loc),
-    IllegalHexDigit(Loc),
-    IllegalOctalValue(Loc),
-    IllegalUnicodeValue(Loc),
+    BadEscape(usize, usize),
+    IllegalNewline(usize, usize),
+    IllegalHexDigit(usize, usize),
+    IllegalOctalValue(usize, usize),
+    IllegalUnicodeValue(usize, usize),
 }
 
-#[derive(Debug)]
-pub struct Token(pub Loc, pub TokenInfo);
+pub type Token = (Loc, TokenInfo, Loc);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenInfo {
     Eof,
     // non-keyword barewords:
@@ -120,8 +115,8 @@ pub enum TokenInfo {
     StringEnd,
 }
 
-pub fn lex(path: Rc<PathBuf>, source: &str) -> Result<Vec<Token>, LexError> {
-    let lexemes = scan::scan(path, source)?;
+pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
+    let lexemes = scan::scan(source)?;
 
     // insert semicolons:
     let mut tokens = Vec::new();
@@ -130,21 +125,21 @@ pub fn lex(path: Rc<PathBuf>, source: &str) -> Result<Vec<Token>, LexError> {
         match lexeme {
             Lexeme::Token(tok) => { tokens.push(tok); }
             Lexeme::Whitespace => {}
-            Lexeme::Newline(loc) => {
+            Lexeme::Newline(s, e) => {
                 let insert = match tokens.last() {
-                    Some(Token(_, TokenInfo::Identifier(_))) => true,
-                    Some(Token(_, TokenInfo::DecInt(_))) => true,
-                    Some(Token(_, TokenInfo::OctInt(_))) => true,
-                    Some(Token(_, TokenInfo::HexInt(_))) => true,
-                    Some(Token(_, TokenInfo::Float(_))) => true,
-                    Some(Token(_, TokenInfo::Imaginary(_))) => true,
-                    Some(Token(_, TokenInfo::RuneEnd)) => true,
-                    Some(Token(_, TokenInfo::StringEnd)) => true,
+                    Some((_, TokenInfo::Identifier(_), _)) => true,
+                    Some((_, TokenInfo::DecInt(_), _)) => true,
+                    Some((_, TokenInfo::OctInt(_), _)) => true,
+                    Some((_, TokenInfo::HexInt(_), _)) => true,
+                    Some((_, TokenInfo::Float(_), _)) => true,
+                    Some((_, TokenInfo::Imaginary(_), _)) => true,
+                    Some((_, TokenInfo::RuneEnd, _)) => true,
+                    Some((_, TokenInfo::StringEnd, _)) => true,
                     _ => false,
                 };
 
                 if insert {
-                    tokens.push(Token(loc, TokenInfo::Semicolon));
+                    tokens.push((Loc::new(s..s), TokenInfo::Semicolon, Loc::new(e..e)));
                 }
             }
         }

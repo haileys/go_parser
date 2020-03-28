@@ -19,7 +19,7 @@
     octal_digit         = [0-7];
     hex_digit           = [0-9A-Fa-f];
     hex_digit_err       = hex_digit
-                        | (any - hex_digit) %{ return Err(LexError::IllegalHexDigit(self.make_loc(p - 1 .. p))); };
+                        | (any - hex_digit) %{ return Err(LexError::IllegalHexDigit(p - 1, p)); };
 
     # Identifiers
     identifier          = letter (letter | unicode_digit)*;
@@ -63,7 +63,7 @@
 
     action octal_value {
         self.value = u32::from_str_radix(&self.data[tm..p], 8)
-            .map_err(|_| LexError::IllegalOctalValue(self.make_loc(tm..self.te)))?;
+            .map_err(|_| LexError::IllegalOctalValue(tm, self.te))?;
     }
 
     rune_uni_char       = unicode_char %{ self.value = self.getkey(self.ts); };
@@ -75,21 +75,21 @@
 
     # Scanners
     rune := |*
-        newline             => { return Err(LexError::IllegalNewline(self.loc())); };
-        "'"                 => { return Err(LexError::UnexpectedChar(self.loc())); };
+        newline             => { return Err(LexError::IllegalNewline(self.ts, self.te)); };
+        "'"                 => { return Err(LexError::UnexpectedChar(self.ts, self.te)); };
         rune_uni_char |
         little_u_value |
         big_u_value |
         escaped_char |
         octal_byte_value |
-        hex_byte_value      => { let c = u32_as_char(self.value, self.loc())?; self.token(TokenInfo::RuneContents(c)); fnext rune_end; };
+        hex_byte_value      => { let c = self.u32_as_char()?; self.token(TokenInfo::RuneContents(c)); fnext rune_end; };
         zlen                => { return Err(LexError::UnterminatedRune); };
     *|;
 
     rune_end := |*
         "'"                 => { self.token(TokenInfo::RuneEnd); fnext main; };
-        newline             => { return Err(LexError::IllegalNewline(self.loc())); };
-        any                 => { return Err(LexError::UnexpectedChar(self.loc())); };
+        newline             => { return Err(LexError::IllegalNewline(self.ts, self.te)); };
+        any                 => { return Err(LexError::UnexpectedChar(self.ts, self.te)); };
         zlen                => { return Err(LexError::UnterminatedRune); };
     *|;
 
@@ -98,19 +98,17 @@
 
     interp_string := |*
         "\""                => { self.token(TokenInfo::StringEnd); fnext main; };
-        newline             => { return Err(LexError::IllegalNewline(self.loc())); };
+        newline             => { return Err(LexError::IllegalNewline(self.ts, self.te)); };
         (any - [\\"\n])*    => { let bytes = self.bytes(); self.token(TokenInfo::StringContents(bytes)); };
-        string_uni_esc      => { let c = u32_as_char(self.value, self.loc())?.to_string(); self.token(TokenInfo::StringContents(c.as_bytes().to_vec())); };
+        string_uni_esc      => { let c = self.u32_as_char()?.to_string(); self.token(TokenInfo::StringContents(c.as_bytes().to_vec())); };
         # escaped bytes are treated as raw bytes in strings, as opposed to code points like in runes:
         string_byte_esc     => { let bytes = vec![self.value as u8]; self.token(TokenInfo::StringContents(bytes)); };
-        "\\"                => { return Err(LexError::BadEscape(self.loc())); };
-        zlen                => { return Err(LexError::UnterminatedString); };
+        "\\"                => { return Err(LexError::BadEscape(self.ts, self.te)); };
     *|;
 
     raw_string := |*
         (any - "`")*    => { let bytes = self.bytes(); self.token(TokenInfo::StringContents(bytes)); };
         "`"             => { self.token(TokenInfo::StringEnd); fnext main; };
-        zlen            => { return Err(LexError::UnterminatedString); };
     *|;
 
     comment_line := |*
@@ -126,7 +124,7 @@
 
     main := |*
         # whitespace:
-        newline         => { let loc = self.loc(); self.lexeme(Lexeme::Newline(loc)) };
+        newline         => { let lexeme = Lexeme::Newline(self.ts, self.te); self.lexeme(lexeme) };
         whitespace      => { self.lexeme(Lexeme::Whitespace) };
 
         # comments:
@@ -227,7 +225,7 @@
         "`"             => { self.token(TokenInfo::StringBeg); fnext raw_string; };
 
         # termination:
-        any             => { return Err(LexError::UnexpectedChar(self.loc())) };
+        any             => { return Err(LexError::UnexpectedChar(self.ts, self.te)) };
         zlen            => { self.token(TokenInfo::Eof) };
     *|;
 }%%
@@ -238,10 +236,6 @@
 
 %% write data;
 
-use std::ops::Range;
-use std::path::PathBuf;
-use std::rc::Rc;
-
 use loc::Loc;
 use super::{Token, TokenInfo, LexError};
 
@@ -249,20 +243,12 @@ use super::{Token, TokenInfo, LexError};
 pub enum Lexeme {
     Token(Token),
     Whitespace,
-    Newline(Loc),
-}
-
-fn u32_as_char(codepoint: u32, loc: Loc) -> Result<char, LexError> {
-    match ::std::char::from_u32(codepoint) {
-        None => Err(LexError::IllegalUnicodeValue(loc)),
-        Some(c) => Ok(c),
-    }
+    Newline(usize, usize),
 }
 
 struct Scanner<'a> {
     lexemes: Vec<Lexeme>,
     value: u32,
-    path: Rc<PathBuf>,
 
     data: &'a str,
     cs: usize,
@@ -291,14 +277,6 @@ impl<'a> Scanner<'a> {
         self.data[idx..].chars().next().unwrap() as u32
     }
 
-    fn make_loc(&self, byte_range: Range<usize>) -> Loc {
-        Loc::new(Rc::clone(&self.path), byte_range)
-    }
-
-    fn loc(&self) -> Loc {
-        self.make_loc(self.ts..self.te)
-    }
-
     fn bytes(&self) -> Vec<u8> {
         self.data[self.ts..self.te].as_bytes().to_vec()
     }
@@ -312,21 +290,31 @@ impl<'a> Scanner<'a> {
     }
 
     fn token(&mut self, tok: TokenInfo) {
-        let tok = Token(self.loc(), tok);
-        self.lexeme(Lexeme::Token(tok))
+        let start = Loc::new(self.ts..self.ts);
+        let end = Loc::new(self.te..self.te);
+        let lexeme = Lexeme::Token((start, tok, end));
+        self.lexeme(lexeme);
     }
 
     fn token_val(&mut self, mktok: impl Fn(String) -> TokenInfo) {
         let tok = mktok(self.string());
         self.token(tok)
     }
+
+    fn u32_as_char(&self) -> Result<char, LexError> {
+        let codepoint = self.value;
+
+        match ::std::char::from_u32(codepoint) {
+            None => Err(LexError::IllegalUnicodeValue(self.ts, self.te)),
+            Some(c) => Ok(c),
+        }
+    }
 }
 
-pub fn scan(path: Rc<PathBuf>, input: &str) -> Result<Vec<Lexeme>, LexError> {
+pub fn scan(input: &str) -> Result<Vec<Lexeme>, LexError> {
     Scanner {
         lexemes: Vec::new(),
         value: 0,
-        path: path,
         data: input,
         cs: 0,
         ts: 0,

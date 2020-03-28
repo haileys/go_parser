@@ -42,14 +42,26 @@ macro_rules! node {
 
 node!(struct SourceFile {
     package: PackageClause,
+    imports: Vec<ImportSpec>,
+    decls: Vec<TopLevelDecl>,
 });
 
 node!(struct PackageClause {
     name: Id,
 });
 
-node!(struct ExpressionList {
-    exprs: Vec<Rc<Expression>>,
+node!(enum ImportName {
+    Dot {},
+    Name { name: String, },
+});
+
+node!(struct ImportSpec {
+    name: Option<ImportName>,
+    path: StringLit,
+});
+
+node!(struct StringLit {
+    value: Vec<u8>,
 });
 
 node!(struct Block {
@@ -57,7 +69,7 @@ node!(struct Block {
 });
 
 node!(struct ConstDecl {
-    specs: Vec<Rc<ConstSpec>>,
+    specs: Vec<ConstSpec>,
 });
 
 node!(struct Id {
@@ -66,7 +78,8 @@ node!(struct Id {
 
 node!(struct ConstSpec {
     idents: Vec<Id>,
-    exprs: ExpressionList,
+    type_: Option<Type>,
+    exprs: Vec<Expression>,
 });
 
 node!(struct TypeDecl {});
@@ -83,11 +96,11 @@ node!(struct FunctionDecl {});
 
 node!(struct MethodDecl {});
 
-node!(enum TopLevelDecl {
-    Decl { decl: Declaration, },
-    Func { decl: FunctionDecl, },
-    Method { decl: MethodDecl, },
-});
+enum TopLevelDecl {
+    Decl(Declaration),
+    Func(FunctionDecl),
+    Method(MethodDecl),
+}
 
 node!(struct LabeledStatement {
     label: Id,

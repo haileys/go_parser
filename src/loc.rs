@@ -1,38 +1,41 @@
+use std::borrow::Borrow;
 use std::cmp;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Loc {
-    path: Rc<PathBuf>,
     byte_range: Range<usize>,
 }
 
 impl Loc {
-    pub fn new(path: Rc<PathBuf>, byte_range: Range<usize>) -> Self {
-        Loc { path, byte_range }
+    pub fn new(byte_range: Range<usize>) -> Self {
+        Loc { byte_range }
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
+    pub fn start(&self) -> usize {
+        self.byte_range.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.byte_range.end
     }
 
     pub fn range(&self) -> Range<usize> {
         self.byte_range.clone()
     }
 
-    pub fn join(&self, other: &Loc) -> Loc {
-        if self.path != other.path {
-            panic!("can't join locs from disparate files");
-        }
-
+    pub fn join(&self, other: impl Borrow<Loc>) -> Loc {
+        let other = other.borrow();
         let start = cmp::min(self.byte_range.start, other.byte_range.start);
         let end = cmp::max(self.byte_range.end, other.byte_range.end);
 
-        Loc {
-            path: Rc::clone(&self.path),
-            byte_range: start..end,
-        }
+        Loc { byte_range: start..end }
+    }
+}
+
+// needed for lalrpop:
+impl Default for Loc {
+    fn default() -> Self {
+        Loc { byte_range: 0..0 }
     }
 }

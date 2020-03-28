@@ -11,4 +11,8 @@ path = "src/lib.rs"
 name = "parse-go"
 path = "src/bin/parse_go.rs"
 
+[build-dependencies]
+lalrpop = "0.16"
+
 [dependencies]
+lalrpop-util = "0.16"
